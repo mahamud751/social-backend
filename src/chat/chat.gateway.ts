@@ -33,6 +33,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (userId) {
       this.connectedUsers.set(userId, client.id);
+      (client as any).data = (client as any).data || {};
+      (client as any).data.userId = userId;
       // Update user status to online
       this.prisma.user.update({
         where: { id: userId },
@@ -101,6 +103,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     } catch (err) {
       this.logger.error('Error in start_call:', err);
     }
+  }
+
+  /** When callee B accepts, notify caller A so A's screen switches from "Calling..." to "Connected" */
+  @SubscribeMessage('call_accepted')
+  handleCallAccepted(
+    @MessageBody() data: { to: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const callerId = data?.to;
+    const calleeId = (client as any).data?.userId;
+    if (!callerId || !calleeId) return;
+    this.emitToUser(callerId, 'call_accepted', { from: calleeId });
+    this.logger.log(`Call accepted: ${calleeId} -> notify caller ${callerId}`);
   }
 
   @SubscribeMessage('send_message')
