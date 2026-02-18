@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String      @id @default(uuid())
+  name        String
+  email       String      @unique
+  avatarUrl   String?
+  status      UserStatus  @default(online)
+  passwordHash String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  sentMessages     Message[]      @relation("UserSentMessages")
+  receivedMessages Message[]      @relation("UserReceivedMessages")
+
+  groupsCreated    ChatGroup[]    @relation("UserCreatedGroups")
+  groupMemberships GroupMember[]
+  groupMessages    GroupMessage[] @relation("UserGroupMessages")
+
+  meetingsCreated  Meeting[]      @relation("UserCreatedMeetings")
+  meetingMembers   MeetingMember[]
+
+  callLogsAsCaller CallLog[]      @relation("UserCallLogs")
+  callLogsAsCallee CallLog[]      @relation("UserReceivedCalls")
+
+  @@index([email])
+}
+
+enum UserStatus {
+  online
+  away
+  offline
+}
+
+model Message {
+  id         String       @id @default(uuid())
+  senderId   String
+  receiverId String
+  content    String
+  type       MessageType  @default(text)
+  attachments Json[]      @default([])
+  createdAt  DateTime     @default(now())
+
+  sender   User @relation("UserSentMessages", fields: [senderId], references: [id])
+  receiver User @relation("UserReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+}
+
+enum MessageType {
+  text
+  image
+  file
+  audio
+}
+
+model ChatGroup {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  avatarUrl   String?
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  members     GroupMember[]
+  messages    GroupMessage[]
+
+  creator     User          @relation("UserCreatedGroups", fields: [createdBy], references: [id])
+
+  @@index([createdBy])
+}
+
+model GroupMember {
+  id        String    @id @default(uuid())
+  groupId   String
+  userId    String
+  role      String    @default("member")
+  joinedAt  DateTime  @default(now())
+
+  group     ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model GroupMessage {
+  id         String      @id @default(uuid())
+  groupId    String
+  senderId   String
+  content    String
+  type       MessageType @default(text)
+  attachments Json[]     @default([])
+  createdAt  DateTime    @default(now())
+
+  group      ChatGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender     User        @relation("UserGroupMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model Meeting {
+  id          String      @id @default(uuid())
+  code        String      @unique
+  title       String?
+  scheduledAt DateTime?
+  createdBy   String
+  isInstant   Boolean     @default(false)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  creator     User        @relation("UserCreatedMeetings", fields: [createdBy], references: [id])
+  participants MeetingMember[]
+
+  @@index([code])
+}
+
+model MeetingMember {
+  id         String    @id @default(uuid())
+  meetingId  String
+  userId     String
+  role       String   @default("participant")
+  joinedAt   DateTime @default(now())
+
+  meeting    Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@index([userId])
+}
+
+model CallLog {
+  id          String      @id @default(uuid())
+  callerId    String
+  calleeId    String
+  type        CallType    @default(audio)
+  startedAt   DateTime    @default(now())
+  endedAt     DateTime?
+  durationSec Int?
+
+  caller      User        @relation("UserCallLogs", fields: [callerId], references: [id])
+  callee      User        @relation("UserReceivedCalls", fields: [calleeId], references: [id])
+
+  @@index([callerId])
+  @@index([calleeId])
+  @@index([startedAt])
+}
+
+enum CallType {
+  audio
+  video
+}
+
