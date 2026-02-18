@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module';
 import { ChatsModule } from './chats/chats.module';
 import { GroupsModule } from './groups/groups.module';
 import { MeetingsModule } from './meetings/meetings.module';
+import { AgoraModule } from './agora/agora.module';
 import { ChatGateway } from './chat/chat.gateway';
 
 @Module({
@@ -17,6 +18,7 @@ import { ChatGateway } from './chat/chat.gateway';
     ChatsModule,
     GroupsModule,
     MeetingsModule,
+    AgoraModule,
   ],
 })
 export class AppModule implements NestModule {

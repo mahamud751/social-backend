@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AgoraService } from '../agora/agora.service';
 
 @Injectable()
 export class MeetingsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private agoraService: AgoraService,
+  ) {}
 
   generateMeetingCode(): string {
     const part1 = Math.floor(100 + Math.random() * 900);
@@ -100,12 +104,23 @@ export class MeetingsService {
       },
     });
 
+    let token: string | null = null;
+    let appId: string | null = null;
+    try {
+      const rtc = this.agoraService.generateRTCToken(meeting.code, 0, undefined, 86400);
+      token = rtc.token;
+      appId = rtc.appId;
+    } catch (_) {}
+
     return {
       id: meeting.id,
       code: meeting.code,
       title: meeting.title,
       scheduledAt: meeting.scheduledAt,
       isInstant: meeting.isInstant,
+      channelName: meeting.code,
+      token,
+      appId,
     };
   }
 
@@ -149,11 +164,25 @@ export class MeetingsService {
       });
     }
 
+    // Generate Agora RTC token for this meeting (channel = code)
+    let token: string | null = null;
+    let appId: string | null = null;
+    try {
+      const rtc = this.agoraService.generateRTCToken(meeting.code, 0, undefined, 86400);
+      token = rtc.token;
+      appId = rtc.appId;
+    } catch (_) {
+      // Agora not configured; client can still request token via /agora/generate-rtc-token
+    }
+
     return {
       id: meeting.id,
       code: meeting.code,
       title: meeting.title || 'Untitled Meeting',
       isInstant: meeting.isInstant,
+      channelName: meeting.code,
+      token,
+      appId,
       participants: meeting.participants.map((p) => ({
         id: p.user.id,
         name: p.user.name,
