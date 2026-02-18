@@ -1,9 +1,12 @@
-import { Controller, Get, Put, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Put, Body, UseGuards, Request, SetMetadata } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
+export const IS_PUBLIC_KEY = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 @Controller('users')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -22,8 +25,9 @@ export class UsersController {
     return this.usersService.updateStatus(req.user.id, body.status);
   }
 
+  @Public()
   @Get()
-  async getAllUsers(@Request() req) {
-    return this.usersService.getAllUsers(req.user.id);
+  async getAllUsers() {
+    return this.usersService.getAllUsers();
   }
 }
