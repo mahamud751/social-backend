@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGroupDto } from './dto/create-group.dto';
+import { ChatGateway } from '../chat/chat.gateway';
 
 @Injectable()
 export class GroupsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private chatGateway: ChatGateway,
+  ) {}
 
   async getGroups(userId: string) {
     const memberships = await this.prisma.groupMember.findMany({
@@ -249,6 +253,8 @@ export class GroupsService {
         content: msg.content,
         type: msg.type,
         attachments: msg.attachments,
+        voiceUrl: msg.voiceUrl ?? null,
+        duration: msg.duration ?? null,
         senderId: msg.senderId,
         senderName: msg.sender.name,
         senderAvatar: msg.sender.avatarUrl,
@@ -258,7 +264,15 @@ export class GroupsService {
     };
   }
 
-  async sendGroupMessage(groupId: string, userId: string, content: string, type: string = 'text', attachments: any[] = []) {
+  async sendGroupMessage(
+    groupId: string,
+    userId: string,
+    content: string,
+    type: string = 'text',
+    attachments: any[] = [],
+    voiceUrl?: string,
+    duration?: number,
+  ) {
     const membership = await this.prisma.groupMember.findUnique({
       where: {
         groupId_userId: {
@@ -279,6 +293,8 @@ export class GroupsService {
         content,
         type: type as any,
         attachments,
+        voiceUrl: voiceUrl || null,
+        duration: duration ?? null,
       },
       include: {
         sender: {
@@ -291,11 +307,33 @@ export class GroupsService {
       },
     });
 
+    const groupMembers = await this.prisma.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    const payload = {
+      id: message.id,
+      groupId,
+      from: userId,
+      message: content,
+      type,
+      attachments: attachments || [],
+      voiceUrl: message.voiceUrl ?? null,
+      duration: message.duration ?? null,
+      timestamp: message.createdAt.getTime(),
+      sender: message.sender,
+    };
+    groupMembers.forEach((m) => {
+      if (m.userId !== userId) this.chatGateway.emitToUser(m.userId, 'new_group_message', payload);
+    });
+
     return {
       id: message.id,
       content: message.content,
       type: message.type,
       attachments: message.attachments,
+      voiceUrl: message.voiceUrl,
+      duration: message.duration,
       senderId: message.senderId,
       senderName: message.sender.name,
       senderAvatar: message.sender.avatarUrl,

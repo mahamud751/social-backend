@@ -152,13 +152,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       timestamp: number;
       attachments?: string[];
       type?: string;
+      voiceUrl?: string;
+      duration?: number;
     },
     @ConnectedSocket() client: Socket,
   ) {
     this.logger.log(`Group message from ${data.from} to group ${data.groupId}`);
 
     try {
-      // Store message in database
       const savedMessage = await this.prisma.groupMessage.create({
         data: {
           groupId: data.groupId,
@@ -166,6 +167,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           content: data.message,
           type: (data.type || 'text') as any,
           attachments: data.attachments || [],
+          voiceUrl: data.voiceUrl || null,
+          duration: data.duration ?? null,
           createdAt: new Date(data.timestamp),
         },
         include: {
@@ -197,6 +200,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
               message: data.message,
               type: data.type || 'text',
               attachments: data.attachments || [],
+              voiceUrl: data.voiceUrl ?? null,
+              duration: data.duration ?? null,
               timestamp: data.timestamp,
               sender: savedMessage.sender,
             });

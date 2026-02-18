@@ -97,13 +97,15 @@ model GroupMember {
 }
 
 model GroupMessage {
-  id         String      @id @default(uuid())
-  groupId    String
-  senderId   String
-  content    String
-  type       MessageType @default(text)
-  attachments Json[]     @default([])
-  createdAt  DateTime    @default(now())
+  id          String       @id @default(uuid())
+  groupId     String
+  senderId    String
+  content     String
+  type        MessageType  @default(text)
+  attachments Json[]       @default([])
+  voiceUrl    String?
+  duration    Int?
+  createdAt   DateTime     @default(now())
 
   group      ChatGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sender     User        @relation("UserGroupMessages", fields: [senderId], references: [id], onDelete: Cascade)

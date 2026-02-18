@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { GroupsController } from './groups.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ChatsModule } from '../chats/chats.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, ChatsModule],
   providers: [GroupsService],
   controllers: [GroupsController],
   exports: [GroupsService],

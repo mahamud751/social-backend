@@ -32,7 +32,7 @@ export class GroupsController {
   async sendGroupMessage(
     @Request() req,
     @Param('id') id: string,
-    @Body() body: { content: string; type?: string; attachments?: any[] },
+    @Body() body: { content: string; type?: string; attachments?: any[]; voiceUrl?: string; duration?: number },
   ) {
     return this.groupsService.sendGroupMessage(
       id,
@@ -40,6 +40,8 @@ export class GroupsController {
       body.content,
       body.type || 'text',
       body.attachments || [],
+      body.voiceUrl,
+      body.duration,
     );
   }
 }
