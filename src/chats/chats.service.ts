@@ -10,32 +10,97 @@ export class ChatsService {
   ) {}
 
   async getChatList(userId: string) {
-    const messages = await this.prisma.message.findMany({
-      where: {
-        OR: [{ senderId: userId }, { receiverId: userId }],
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            avatarUrl: true,
-            status: true,
+    type MessageRow = {
+      id: string;
+      senderId: string;
+      receiverId: string;
+      content: string;
+      createdAt: Date;
+      sender: { id: string; name: string; avatarUrl: string | null; status: string };
+      receiver: { id: string; name: string; avatarUrl: string | null; status: string };
+    };
+
+    let messages: MessageRow[];
+
+    try {
+      messages = (await this.prisma.message.findMany({
+        where: {
+          OR: [{ senderId: userId }, { receiverId: userId }],
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+              status: true,
+            },
+          },
+          receiver: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+              status: true,
+            },
           },
         },
-        receiver: {
-          select: {
-            id: true,
-            name: true,
-            avatarUrl: true,
-            status: true,
-          },
+        orderBy: {
+          createdAt: 'desc',
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+      })) as MessageRow[];
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : '';
+      if (msg.includes('voiceUrl') || msg.includes('duration') || msg.includes('column')) {
+        const raw = await this.prisma.$queryRaw<
+          Array<{
+            id: string;
+            senderId: string;
+            receiverId: string;
+            content: string;
+            createdAt: Date;
+            s_id: string;
+            s_name: string;
+            s_avatarUrl: string | null;
+            s_status: string;
+            r_id: string;
+            r_name: string;
+            r_avatarUrl: string | null;
+            r_status: string;
+          }>
+        >`
+          SELECT m.id, m."senderId", m."receiverId", m.content, m."createdAt",
+                 s.id AS s_id, s.name AS s_name, s."avatarUrl" AS s_avatarUrl, s.status AS s_status,
+                 r.id AS r_id, r.name AS r_name, r."avatarUrl" AS r_avatarUrl, r.status AS r_status
+          FROM "Message" m
+          INNER JOIN "User" s ON s.id = m."senderId"
+          INNER JOIN "User" r ON r.id = m."receiverId"
+          WHERE m."senderId" = ${userId} OR m."receiverId" = ${userId}
+          ORDER BY m."createdAt" DESC
+        `;
+        messages = raw.map((r) => ({
+          id: r.id,
+          senderId: r.senderId,
+          receiverId: r.receiverId,
+          content: r.content,
+          createdAt: r.createdAt,
+          sender: {
+            id: r.s_id,
+            name: r.s_name,
+            avatarUrl: r.s_avatarUrl,
+            status: r.s_status,
+          },
+          receiver: {
+            id: r.r_id,
+            name: r.r_name,
+            avatarUrl: r.r_avatarUrl,
+            status: r.r_status,
+          },
+        }));
+      } else {
+        throw err;
+      }
+    }
 
     const chatMap = new Map();
 
