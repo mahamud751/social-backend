@@ -69,26 +69,83 @@ export class ChatsService {
       throw new NotFoundException('User not found');
     }
 
-    const messages = await this.prisma.message.findMany({
-      where: {
-        OR: [
-          { senderId: userId, receiverId: partnerId },
-          { senderId: partnerId, receiverId: userId },
-        ],
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            avatarUrl: true,
+    const where = {
+      OR: [
+        { senderId: userId, receiverId: partnerId },
+        { senderId: partnerId, receiverId: userId },
+      ],
+    };
+
+    let messages: Array<{
+      id: string;
+      content: string;
+      type: string;
+      attachments: unknown;
+      voiceUrl?: string | null;
+      duration?: number | null;
+      senderId: string;
+      createdAt: Date;
+      sender: { id: string; name: string; avatarUrl: string | null };
+    }>;
+
+    type MessageRow = typeof messages extends (infer E)[] ? E : never;
+    try {
+      messages = (await this.prisma.message.findMany({
+        where,
+        include: {
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
+        orderBy: { createdAt: 'asc' },
+      })) as MessageRow[];
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : '';
+      if (msg.includes('voiceUrl') || msg.includes('duration') || msg.includes('column')) {
+        const raw = await this.prisma.$queryRaw<
+          Array<{
+            id: string;
+            content: string;
+            type: string;
+            attachments: unknown;
+            senderId: string;
+            createdAt: Date;
+            sender_id: string;
+            sender_name: string;
+            sender_avatarUrl: string | null;
+          }>
+        >`
+          SELECT m.id, m.content, m.type, m.attachments, m."senderId", m."createdAt",
+                 u.id AS sender_id, u.name AS sender_name, u."avatarUrl" AS sender_avatarUrl
+          FROM "Message" m
+          INNER JOIN "User" u ON u.id = m."senderId"
+          WHERE (m."senderId" = ${userId} AND m."receiverId" = ${partnerId})
+             OR (m."senderId" = ${partnerId} AND m."receiverId" = ${userId})
+          ORDER BY m."createdAt" ASC
+        `;
+        messages = raw.map((r) => ({
+          id: r.id,
+          content: r.content,
+          type: r.type,
+          attachments: r.attachments,
+          voiceUrl: null,
+          duration: null,
+          senderId: r.senderId,
+          createdAt: r.createdAt,
+          sender: {
+            id: r.sender_id,
+            name: r.sender_name,
+            avatarUrl: r.sender_avatarUrl,
+          },
+        }));
+      } else {
+        throw err;
+      }
+    }
 
     return {
       partner: {
