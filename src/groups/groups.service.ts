@@ -307,25 +307,31 @@ export class GroupsService {
       },
     });
 
-    const groupMembers = await this.prisma.groupMember.findMany({
-      where: { groupId },
-      select: { userId: true },
-    });
-    const payload = {
-      id: message.id,
-      groupId,
-      from: userId,
-      message: content,
-      type,
-      attachments: attachments || [],
-      voiceUrl: message.voiceUrl ?? null,
-      duration: message.duration ?? null,
-      timestamp: message.createdAt.getTime(),
-      sender: message.sender,
-    };
-    groupMembers.forEach((m) => {
-      if (m.userId !== userId) this.chatGateway.emitToUser(m.userId, 'new_group_message', payload);
-    });
+    try {
+      const groupMembers = await this.prisma.groupMember.findMany({
+        where: { groupId },
+        select: { userId: true },
+      });
+      const payload = {
+        id: message.id,
+        groupId,
+        from: userId,
+        message: content,
+        type,
+        attachments: attachments || [],
+        voiceUrl: message.voiceUrl ?? null,
+        duration: message.duration ?? null,
+        timestamp: message.createdAt.getTime(),
+        sender: message.sender,
+      };
+      groupMembers.forEach((m) => {
+        if (m.userId !== userId && this.chatGateway?.emitToUser) {
+          this.chatGateway.emitToUser(m.userId, 'new_group_message', payload);
+        }
+      });
+    } catch (e) {
+      // Don't fail the request if real-time emit fails
+    }
 
     return {
       id: message.id,
