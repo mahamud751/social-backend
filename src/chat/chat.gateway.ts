@@ -73,6 +73,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /** When user A starts a call to user B, notify B so B sees IncomingCallScreen */
+  @SubscribeMessage('start_call')
+  async handleStartCall(
+    @MessageBody()
+    data: { to: string; callType: 'audio' | 'video'; from: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const { to: calleeId, callType, from: callerId } = data;
+    if (!calleeId || !callerId) return;
+
+    try {
+      const caller = await this.prisma.user.findUnique({
+        where: { id: callerId },
+        select: { id: true, name: true, avatarUrl: true },
+      });
+      const callerName = caller?.name ?? 'Unknown';
+      const avatar = caller?.avatarUrl ?? null;
+
+      this.emitToUser(calleeId, 'incoming_call', {
+        callerId,
+        callerName,
+        avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=EF5F21&color=fff&size=150`,
+        callType: callType || 'audio',
+      });
+      this.logger.log(`Incoming call emitted to ${calleeId} from ${callerId} (${callType})`);
+    } catch (err) {
+      this.logger.error('Error in start_call:', err);
+    }
+  }
+
   @SubscribeMessage('send_message')
   async handleMessage(
     @MessageBody()
