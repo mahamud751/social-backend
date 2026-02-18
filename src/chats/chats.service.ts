@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChatGateway } from '../chat/chat.gateway';
 
 @Injectable()
 export class ChatsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private chatGateway: ChatGateway,
+  ) {}
 
   async getChatList(userId: string) {
     const messages = await this.prisma.message.findMany({
@@ -156,6 +160,20 @@ export class ChatsService {
         },
       },
     });
+
+    // Notify receiver in real time (single source: REST; no duplicate from socket)
+    this.chatGateway.emitToUser(receiverId, 'new_message', {
+        id: message.id,
+        from: userId,
+        to: receiverId,
+        message: content,
+        type,
+        attachments: attachments || [],
+        voiceUrl: message.voiceUrl ?? null,
+        duration: message.duration ?? null,
+        timestamp: message.createdAt.getTime(),
+        sender: message.sender,
+      });
 
     return {
       id: message.id,

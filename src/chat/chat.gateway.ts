@@ -47,6 +47,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /** Emit event to a user by userId (for REST-created messages) */
+  emitToUser(userId: string, event: string, data: any) {
+    const socketId = this.connectedUsers.get(userId);
+    if (socketId) this.server.to(socketId).emit(event, data);
+  }
+
   handleDisconnect(client: Socket) {
     const userId = client.handshake.query.userId as string;
     this.logger.log(`Client disconnected: ${client.id}, userId: ${userId}`);
@@ -93,6 +99,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           content: data.message,
           type: (data.type || 'text') as any,
           attachments: data.attachments || [],
+          voiceUrl: data.voiceUrl || null,
+          duration: data.duration ?? null,
           createdAt: new Date(data.timestamp),
         },
         include: {
@@ -116,6 +124,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           message: data.message,
           type: data.type || 'text',
           attachments: data.attachments || [],
+          voiceUrl: data.voiceUrl ?? null,
+          duration: data.duration ?? null,
           timestamp: data.timestamp,
           sender: savedMessage.sender,
         });
