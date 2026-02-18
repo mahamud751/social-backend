@@ -162,7 +162,8 @@ export class ChatsService {
     });
 
     // Notify receiver in real time (single source: REST; no duplicate from socket)
-    this.chatGateway.emitToUser(receiverId, 'new_message', {
+    try {
+      this.chatGateway.emitToUser(receiverId, 'new_message', {
         id: message.id,
         from: userId,
         to: receiverId,
@@ -174,6 +175,9 @@ export class ChatsService {
         timestamp: message.createdAt.getTime(),
         sender: message.sender,
       });
+    } catch (e) {
+      // Don't fail the request if real-time emit fails
+    }
 
     return {
       id: message.id,
