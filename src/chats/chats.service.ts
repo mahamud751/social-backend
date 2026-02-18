@@ -102,6 +102,8 @@ export class ChatsService {
         content: msg.content,
         type: msg.type,
         attachments: msg.attachments,
+        voiceUrl: msg.voiceUrl ?? null,
+        duration: msg.duration ?? null,
         senderId: msg.senderId,
         senderName: msg.sender.name,
         senderAvatar: msg.sender.avatarUrl,
