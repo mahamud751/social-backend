@@ -21,4 +21,9 @@ export class UsersController {
   async updateStatus(@Request() req, @Body() body: { status: 'online' | 'away' | 'offline' }) {
     return this.usersService.updateStatus(req.user.id, body.status);
   }
+
+  @Get()
+  async getAllUsers(@Request() req) {
+    return this.usersService.getAllUsers(req.user.id);
+  }
 }

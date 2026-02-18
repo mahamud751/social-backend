@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module';
 import { ChatsModule } from './chats/chats.module';
 import { GroupsModule } from './groups/groups.module';
 import { MeetingsModule } from './meetings/meetings.module';
+import { ChatGateway } from './chat/chat.gateway';
 
 @Module({
   imports: [

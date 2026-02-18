@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { ValidationError } from 'class-validator';
 import * as express from 'express';
+import { join } from 'path';
 
 const cookieParser = require('cookie-parser');
 
@@ -19,6 +20,7 @@ async function bootstrap() {
   app.use(cookieParser());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
 
   app.setGlobalPrefix('api');
   app.useGlobalPipes(

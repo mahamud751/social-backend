@@ -52,4 +52,26 @@ export class UsersService {
       },
     });
   }
+
+  async getAllUsers(excludeUserId?: string) {
+    const users = await this.prisma.user.findMany({
+      where: excludeUserId
+        ? {
+            id: { not: excludeUserId },
+          }
+        : {},
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatarUrl: true,
+        status: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    return users;
+  }
 }

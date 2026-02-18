@@ -107,7 +107,27 @@ export class ChatsService {
     };
   }
 
-  async sendMessage(userId: string, receiverId: string, content: string, type: string = 'text', attachments: any[] = []) {
+  async uploadFiles(files: Express.Multer.File[]) {
+    const uploadedFiles = files.map((file) => ({
+      filename: file.filename,
+      url: `/uploads/${file.filename}`,
+      originalName: file.originalname,
+      size: file.size,
+      mimetype: file.mimetype,
+    }));
+
+    return { files: uploadedFiles };
+  }
+
+  async sendMessage(
+    userId: string,
+    receiverId: string,
+    content: string,
+    type: string = 'text',
+    attachments: any[] = [],
+    voiceUrl?: string,
+    duration?: number,
+  ) {
     const receiver = await this.prisma.user.findUnique({
       where: { id: receiverId },
     });
@@ -123,6 +143,8 @@ export class ChatsService {
         content,
         type: type as any,
         attachments,
+        voiceUrl: voiceUrl || null,
+        duration: duration || null,
       },
       include: {
         sender: {
@@ -140,6 +162,8 @@ export class ChatsService {
       content: message.content,
       type: message.type,
       attachments: message.attachments,
+      voiceUrl: message.voiceUrl,
+      duration: message.duration,
       senderId: message.senderId,
       senderName: message.sender.name,
       senderAvatar: message.sender.avatarUrl,
