@@ -63,6 +63,7 @@ enum MessageType {
   image
   file
   audio
+  voice
 }
 
 model ChatGroup {
