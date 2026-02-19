@@ -83,14 +83,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  /** When user A starts a call to user B, notify B so B sees IncomingCallScreen */
+  /** When user A starts a call to user B, notify B (same as Savasaachi call_invite: pass channelName so both join same channel). */
   @SubscribeMessage('start_call')
   async handleStartCall(
     @MessageBody()
-    data: { to: string; callType: 'audio' | 'video'; from: string },
+    data: {
+      to: string;
+      callType: 'audio' | 'video';
+      from: string;
+      channelName?: string;
+    },
     @ConnectedSocket() client: Socket,
   ) {
-    const { to: calleeId, callType, from: callerId } = data;
+    const { to: calleeId, callType, from: callerId, channelName } = data;
     if (!calleeId || !callerId) return;
 
     try {
@@ -101,13 +106,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const callerName = caller?.name ?? 'Unknown';
       const avatar = caller?.avatarUrl ?? null;
 
-      this.emitToUser(calleeId, 'incoming_call', {
+      const payload: Record<string, unknown> = {
         callerId,
         callerName,
         avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=EF5F21&color=fff&size=150`,
         callType: callType || 'audio',
-      });
-      this.logger.log(`Incoming call emitted to ${calleeId} from ${callerId} (${callType})`);
+      };
+      if (channelName && typeof channelName === 'string') {
+        payload.channelName = channelName.trim();
+        this.logger.log(`[start_call] ChannelName provided: ${payload.channelName}`);
+      } else {
+        this.logger.warn(`[start_call] No channelName provided by caller ${callerId}`);
+      }
+      this.emitToUser(calleeId, 'incoming_call', payload);
+      this.logger.log(
+        `Incoming call emitted to ${calleeId} from ${callerId} (${callType})${payload.channelName ? ` channel: ${payload.channelName}` : ' (NO CHANNEL)'}`,
+      );
     } catch (err) {
       this.logger.error('Error in start_call:', err);
     }
