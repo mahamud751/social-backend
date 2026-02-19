@@ -105,6 +105,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /**
+   * 1:1 call: one peer sends their Agora UID so the other can show remote video (fallback when onUserJoined doesn't fire).
+   * Same pattern as Savasaachi dm_agora_uid / dm_peer_agora_uid.
+   */
+  @SubscribeMessage('call_agora_uid')
+  handleCallAgoraUid(
+    @MessageBody()
+    data: {
+      channelName: string;
+      agoraUid: number;
+      targetUserId: string;
+    },
+  ) {
+    if (!data?.targetUserId || data.agoraUid == null) return;
+    const target = String(data.targetUserId).trim();
+    const socketId = this.connectedUsers.get(target);
+    if (socketId) {
+      this.server.to(socketId).emit('call_peer_agora_uid', {
+        channelName:
+          typeof data.channelName === 'string'
+            ? data.channelName.trim()
+            : data.channelName,
+        agoraUid: Number(data.agoraUid),
+      });
+      this.logger.log(
+        `call_peer_agora_uid forwarded to ${target}, uid=${data.agoraUid}`,
+      );
+    }
+  }
+
   /** When callee B accepts, notify caller A so A's screen switches from "Calling..." to "Connected" */
   @SubscribeMessage('call_accepted')
   handleCallAccepted(
