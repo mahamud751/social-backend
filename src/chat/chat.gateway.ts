@@ -106,6 +106,85 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
+   * When a user starts a group call from GroupChatScreen, notify all other group members
+   * so they see an incoming call with caller identity and can join the same meeting.
+   */
+  @SubscribeMessage('start_group_call')
+  async handleStartGroupCall(
+    @MessageBody()
+    data: {
+      from: string;
+      groupId: string;
+      callType: 'audio' | 'video';
+      meeting: {
+        code: string;
+        title: string;
+        channelName: string;
+        token: string;
+        appId: string;
+      };
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const { from: callerId, groupId, callType, meeting } = data;
+    if (!callerId || !groupId || !meeting?.channelName) return;
+
+    try {
+      const [caller, group, groupMembers] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: callerId },
+          select: { id: true, name: true, avatarUrl: true },
+        }),
+        this.prisma.chatGroup.findUnique({
+          where: { id: groupId },
+          select: { id: true, name: true, avatarUrl: true },
+        }),
+        this.prisma.groupMember.findMany({
+          where: { groupId },
+          select: { userId: true },
+        }),
+      ]);
+
+      const callerName = caller?.name ?? 'Unknown';
+      const avatar =
+        caller?.avatarUrl ||
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&background=EF5F21&color=fff&size=150`;
+      const groupName = group?.name ?? 'Group';
+      const groupAvatar = group?.avatarUrl ?? null;
+
+      const payload = {
+        callerId,
+        callerName,
+        avatar,
+        callType: callType || 'video',
+        isGroupCall: true,
+        groupId,
+        groupName,
+        groupAvatar:
+          groupAvatar ||
+          `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName)}&background=EF5F21&color=fff&size=150`,
+        code: meeting.code,
+        title: meeting.title,
+        channelName: meeting.channelName,
+        token: meeting.token,
+        appId: meeting.appId,
+      };
+
+      let emitted = 0;
+      for (const member of groupMembers) {
+        if (member.userId === callerId) continue;
+        this.emitToUser(member.userId, 'incoming_call', payload);
+        emitted++;
+      }
+      this.logger.log(
+        `Group call from ${callerId} in group ${groupId}: incoming_call emitted to ${emitted} members`,
+      );
+    } catch (err) {
+      this.logger.error('Error in start_group_call:', err);
+    }
+  }
+
+  /**
    * 1:1 call: one peer sends their Agora UID so the other can show remote video (fallback when onUserJoined doesn't fire).
    * Same pattern as Savasaachi dm_agora_uid / dm_peer_agora_uid.
    */
@@ -120,7 +199,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!data?.targetUserId || data.agoraUid == null) return;
     const target = String(data.targetUserId).trim();
-    const socketId = this.connectedUsers.get(target);
+    let socketId = this.connectedUsers.get(target);
+    if (!socketId && target) {
+      for (const [userId, sid] of this.connectedUsers) {
+        if (String(userId).trim().toLowerCase() === target.toLowerCase()) {
+          socketId = sid;
+          break;
+        }
+      }
+    }
     if (socketId) {
       this.server.to(socketId).emit('call_peer_agora_uid', {
         channelName:
