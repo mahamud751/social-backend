@@ -23,53 +23,61 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   private logger = new Logger('ChatGateway');
-  private connectedUsers = new Map<string, string>(); // userId -> socketId
+  private connectedUsers = new Map<string, string>(); // normalized userId -> socketId (same as Savasaachi for reliable DM UID lookup)
 
   constructor(private prisma: PrismaService) {}
 
+  /** Normalize user ID so socket lookup always matches (e.g. lowercase). Same as Savasaachi. */
+  private normalizeUserId(id: string | undefined): string {
+    return String(id ?? '').trim().toLowerCase();
+  }
+
   handleConnection(client: Socket) {
-    const userId = client.handshake.query.userId as string;
+    const rawUserId = client.handshake.query.userId as string;
+    const userId = this.normalizeUserId(rawUserId);
     this.logger.log(`Client connected: ${client.id}, userId: ${userId}`);
 
     if (userId) {
       this.connectedUsers.set(userId, client.id);
       (client as any).data = (client as any).data || {};
-      (client as any).data.userId = userId;
-      // Update user status to online
+      (client as any).data.userId = rawUserId || userId;
+      // Update user status to online (Prisma may use raw id; try normalized first)
       this.prisma.user.update({
-        where: { id: userId },
+        where: { id: rawUserId || userId },
         data: { status: 'online' },
       }).catch((err) => this.logger.error('Error updating user status:', err));
 
       // Notify others about this user coming online
       this.server.emit('user_status', {
-        userId,
+        userId: rawUserId || userId,
         status: 'online',
       });
     }
   }
 
-  /** Emit event to a user by userId (for REST-created messages) */
+  /** Emit event to a user by userId (lookup normalized so it matches connectedUsers) */
   emitToUser(userId: string, event: string, data: any) {
-    const socketId = this.connectedUsers.get(userId);
+    const key = this.normalizeUserId(userId);
+    const socketId = this.connectedUsers.get(key);
     if (socketId) this.server.to(socketId).emit(event, data);
   }
 
   handleDisconnect(client: Socket) {
-    const userId = client.handshake.query.userId as string;
+    const rawUserId = client.handshake.query.userId as string;
+    const userId = this.normalizeUserId(rawUserId);
     this.logger.log(`Client disconnected: ${client.id}, userId: ${userId}`);
 
     if (userId) {
       this.connectedUsers.delete(userId);
       // Update user status to offline
       this.prisma.user.update({
-        where: { id: userId },
+        where: { id: rawUserId || userId },
         data: { status: 'offline' },
       }).catch((err) => this.logger.error('Error updating user status:', err));
 
       // Notify others about this user going offline
       this.server.emit('user_status', {
-        userId,
+        userId: rawUserId || userId,
         status: 'offline',
       });
     }
@@ -188,6 +196,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * 1:1 call: one peer sends their Agora UID so the other can show remote video (fallback when onUserJoined doesn't fire).
    * Same pattern as Savasaachi dm_agora_uid / dm_peer_agora_uid.
    */
+  /** 1:1 call: forward Agora UID to peer so they can show remote video. Lookup by normalized userId (same as Savasaachi). */
   @SubscribeMessage('call_agora_uid')
   handleCallAgoraUid(
     @MessageBody()
@@ -198,16 +207,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     },
   ) {
     if (!data?.targetUserId || data.agoraUid == null) return;
-    const target = String(data.targetUserId).trim();
-    let socketId = this.connectedUsers.get(target);
-    if (!socketId && target) {
-      for (const [userId, sid] of this.connectedUsers) {
-        if (String(userId).trim().toLowerCase() === target.toLowerCase()) {
-          socketId = sid;
-          break;
-        }
-      }
-    }
+    const targetKey = this.normalizeUserId(data.targetUserId);
+    const socketId = this.connectedUsers.get(targetKey);
     if (socketId) {
       this.server.to(socketId).emit('call_peer_agora_uid', {
         channelName:
@@ -217,7 +218,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         agoraUid: Number(data.agoraUid),
       });
       this.logger.log(
-        `call_peer_agora_uid forwarded to ${target}, uid=${data.agoraUid}`,
+        `call_peer_agora_uid forwarded to ${targetKey}, uid=${data.agoraUid}`,
+      );
+    }
+  }
+
+  /** Savasaachi 1:1: same as call_agora_uid; emit dm_peer_agora_uid so Savasaachi app receives the event it listens for. */
+  @SubscribeMessage('dm_agora_uid')
+  handleDmAgoraUid(
+    @MessageBody()
+    data: {
+      channelName: string;
+      agoraUid: number;
+      myUserId?: string;
+      targetUserId: string;
+    },
+  ) {
+    if (!data?.targetUserId || data.agoraUid == null) return;
+    const targetKey = this.normalizeUserId(data.targetUserId);
+    const socketId = this.connectedUsers.get(targetKey);
+    if (socketId) {
+      const payload = {
+        channelName:
+          typeof data.channelName === 'string'
+            ? data.channelName.trim()
+            : data.channelName,
+        agoraUid: Number(data.agoraUid),
+      };
+      this.server.to(socketId).emit('dm_peer_agora_uid', payload);
+      this.logger.log(
+        `dm_peer_agora_uid forwarded to ${targetKey}, uid=${data.agoraUid}`,
       );
     }
   }
@@ -276,8 +306,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       });
 
-      // Send to receiver if connected
-      const receiverSocketId = this.connectedUsers.get(data.to);
+      // Send to receiver if connected (normalized lookup)
+      const receiverSocketId = this.connectedUsers.get(this.normalizeUserId(data.to));
       if (receiverSocketId) {
         this.server.to(receiverSocketId).emit('new_message', {
           id: savedMessage.id,
@@ -353,7 +383,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Send to all group members
       groupMembers.forEach((member) => {
         if (member.userId !== data.from) {
-          const memberSocketId = this.connectedUsers.get(member.userId);
+          const memberSocketId = this.connectedUsers.get(this.normalizeUserId(member.userId));
           if (memberSocketId) {
             this.server.to(memberSocketId).emit('new_group_message', {
               id: savedMessage.id,
